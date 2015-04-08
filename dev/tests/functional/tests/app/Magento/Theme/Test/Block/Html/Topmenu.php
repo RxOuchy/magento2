@@ -1,6 +1,5 @@
 <?php
 /**
- * @spi
  * Copyright © 2015 Magento. All rights reserved.
  * See COPYING.txt for license details.
  */
@@ -61,7 +60,6 @@ class Topmenu extends Block
                 }
             );
         }
-        sleep(1); // TODO: sleep should be removed after fix with category sliding
         $category[0]->click();
     }
 

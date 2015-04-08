@@ -23,35 +23,49 @@ try {
         exit(0);
     }
 
-    $config = \Magento\ToolkitFramework\Config::getInstance();
-    $config->loadConfig(\Magento\ToolkitFramework\Helper\Cli::getOption('profile'));
-    $config->loadLabels(__DIR__ . '/framework/labels.xml');
-
-    $labels = $config->getLabels();
-
-    echo 'Generating profile with following params:' . PHP_EOL;
-    foreach ($labels as $configKey => $label) {
-        echo ' |- ' . $label . ': ' . $config->getValue($configKey) . PHP_EOL;
-    }
-
-    $files = \Magento\ToolkitFramework\FixtureSet::getInstance()->getFixtures();
-
     $logWriter = new \Zend_Log_Writer_Stream('php://output');
     $logWriter->setFormatter(new \Zend_Log_Formatter_Simple('%message%' . PHP_EOL));
     $logger = new \Zend_Log($logWriter);
 
     $shell = new \Magento\Framework\Shell(new \Magento\Framework\Shell\CommandRenderer(), $logger);
 
-    $application = new \Magento\ToolkitFramework\Application($applicationBaseDir, $shell);
+    $application = new \Magento\ToolkitFramework\Application($applicationBaseDir, $shell, []);
     $application->bootstrap();
+    $application->loadFixtures();
 
-    foreach ($files as $fixture) {
-        echo $fixture['action'] . '... ';
+    $config = \Magento\ToolkitFramework\Config::getInstance();
+    $config->loadConfig(\Magento\ToolkitFramework\Helper\Cli::getOption('profile'));
+
+    echo 'Generating profile with following params:' . PHP_EOL;
+    foreach ($application->getParamLabels() as $configKey => $label) {
+        echo ' |- ' . $label . ': ' . $config->getValue($configKey) . PHP_EOL;
+    }
+
+    /** @var $config \Magento\Indexer\Model\Config */
+    $config = $application->getObjectManager()->get('Magento\Indexer\Model\Config');
+    $indexerListIds = $config->getIndexers();
+    /** @var $indexerRegistry \Magento\Indexer\Model\IndexerRegistry */
+    $indexerRegistry = $application->getObjectManager()->create('Magento\Indexer\Model\IndexerRegistry');
+    $indexersState = [];
+    foreach ($indexerListIds as $key => $indexerId) {
+        $indexer = $indexerRegistry->get($indexerId['indexer_id']);
+        $indexersState[$indexerId['indexer_id']] = $indexer->isScheduled();
+        $indexer->setScheduled(true);
+    }
+
+    foreach ($application->getFixtures() as $fixture) {
+        echo $fixture->getActionTitle() . '... ';
         $startTime = microtime(true);
-        $application->applyFixture(__DIR__ . '/fixtures/' . $fixture['file']);
+        $fixture->execute();
         $endTime = microtime(true);
         $resultTime = $endTime - $startTime;
         echo ' done in ' . gmdate('H:i:s', $resultTime) . PHP_EOL;
+    }
+
+    foreach ($indexerListIds as $indexerId) {
+        /** @var $indexer \Magento\Indexer\Model\Indexer */
+        $indexer = $indexerRegistry->get($indexerId['indexer_id']);
+        $indexer->setScheduled($indexersState[$indexerId['indexer_id']]);
     }
 
     $application->reindex();

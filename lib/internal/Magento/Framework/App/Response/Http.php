@@ -11,60 +11,56 @@ use Magento\Framework\App\Http\Context;
 use Magento\Framework\App\ObjectManager;
 use Magento\Framework\Stdlib\Cookie\CookieMetadataFactory;
 use Magento\Framework\Stdlib\CookieManagerInterface;
+use Magento\Framework\Stdlib\DateTime;
 
-class Http extends \Zend_Controller_Response_Http implements HttpInterface
+class Http extends \Magento\Framework\HTTP\PhpEnvironment\Response
 {
-    /**
-     * Cookie to store page vary string
-     */
+    /** Cookie to store page vary string */
     const COOKIE_VARY_STRING = 'X-Magento-Vary';
 
-    /**
-     * @var \Magento\Framework\Stdlib\CookieManagerInterface
-     */
+    /** Format for expiration timestamp headers */
+    const EXPIRATION_TIMESTAMP_FORMAT = 'D, d M Y H:i:s T';
+
+    /** @var \Magento\Framework\Stdlib\CookieManagerInterface */
     protected $cookieManager;
 
-    /**
-     * @var \Magento\Framework\Stdlib\Cookie\CookieMetadataFactory
-     */
+    /** @var \Magento\Framework\Stdlib\Cookie\CookieMetadataFactory */
     protected $cookieMetadataFactory;
 
-    /**
-     * @var \Magento\Framework\App\Http\Context
-     */
+    /** @var \Magento\Framework\App\Http\Context */
     protected $context;
 
+    /** @var DateTime */
+    protected $dateTime;
+
     /**
-     * @param \Magento\Framework\Stdlib\CookieManagerInterface $cookieManager
-     * @param \Magento\Framework\Stdlib\Cookie\CookieMetadataFactory $cookieMetadataFactory
-     * @param \Magento\Framework\App\Http\Context $context
+     * @param CookieManagerInterface $cookieManager
+     * @param CookieMetadataFactory $cookieMetadataFactory
+     * @param Context $context
+     * @param DateTime $dateTime
      */
     public function __construct(
         CookieManagerInterface $cookieManager,
         CookieMetadataFactory $cookieMetadataFactory,
-        Context $context
+        Context $context,
+        DateTime $dateTime
     ) {
         $this->cookieManager = $cookieManager;
         $this->cookieMetadataFactory = $cookieMetadataFactory;
         $this->context = $context;
+        $this->dateTime = $dateTime;
     }
 
     /**
-     * Get header value by name.
-     * Returns first found header by passed name.
-     * If header with specified name was not found returns false.
+     * Send the response, including all headers, rendering exceptions if so
+     * requested.
      *
-     * @param string $name
-     * @return array|bool
+     * @return void
      */
-    public function getHeader($name)
+    public function sendResponse()
     {
-        foreach ($this->_headers as $header) {
-            if ($header['name'] == $name) {
-                return $header;
-            }
-        }
-        return false;
+        $this->sendVary();
+        parent::sendResponse();
     }
 
     /**
@@ -89,18 +85,6 @@ class Http extends \Zend_Controller_Response_Http implements HttpInterface
     }
 
     /**
-     * Send the response, including all headers, rendering exceptions if so
-     * requested.
-     *
-     * @return void
-     */
-    public function sendResponse()
-    {
-        $this->sendVary();
-        parent::sendResponse();
-    }
-
-    /**
      * Set headers for public cache
      * Accepts the time-to-live (max-age) parameter
      *
@@ -115,7 +99,7 @@ class Http extends \Zend_Controller_Response_Http implements HttpInterface
         }
         $this->setHeader('pragma', 'cache', true);
         $this->setHeader('cache-control', 'public, max-age=' . $ttl . ', s-maxage=' . $ttl, true);
-        $this->setHeader('expires', gmdate('D, d M Y H:i:s T', strtotime('+' . $ttl . ' seconds')), true);
+        $this->setHeader('expires', $this->getExpirationHeader('+' . $ttl . ' seconds'), true);
     }
 
     /**
@@ -132,7 +116,7 @@ class Http extends \Zend_Controller_Response_Http implements HttpInterface
         }
         $this->setHeader('pragma', 'cache', true);
         $this->setHeader('cache-control', 'private, max-age=' . $ttl, true);
-        $this->setHeader('expires', gmdate('D, d M Y H:i:s T', strtotime('+' . $ttl . ' seconds')), true);
+        $this->setHeader('expires', $this->getExpirationHeader('+' . $ttl . ' seconds'), true);
     }
 
     /**
@@ -144,7 +128,7 @@ class Http extends \Zend_Controller_Response_Http implements HttpInterface
     {
         $this->setHeader('pragma', 'no-cache', true);
         $this->setHeader('cache-control', 'no-store, no-cache, must-revalidate, max-age=0', true);
-        $this->setHeader('expires', gmdate('D, d M Y H:i:s T', strtotime('-1 year')), true);
+        $this->setHeader('expires', $this->getExpirationHeader('-1 year'), true);
     }
 
     /**
@@ -156,7 +140,7 @@ class Http extends \Zend_Controller_Response_Http implements HttpInterface
     public function representJson($content)
     {
         $this->setHeader('Content-Type', 'application/json', true);
-        return $this->setBody($content);
+        return $this->setContent($content);
     }
 
     /**
@@ -164,7 +148,7 @@ class Http extends \Zend_Controller_Response_Http implements HttpInterface
      */
     public function __sleep()
     {
-        return ['_body', '_exceptions', '_headers', '_headersRaw', '_httpResponseCode', 'context'];
+        return ['content', 'isRedirect', 'statusCode', 'context'];
     }
 
     /**
@@ -177,5 +161,16 @@ class Http extends \Zend_Controller_Response_Http implements HttpInterface
         $objectManager = ObjectManager::getInstance();
         $this->cookieManager = $objectManager->create('Magento\Framework\Stdlib\CookieManagerInterface');
         $this->cookieMetadataFactory = $objectManager->get('Magento\Framework\Stdlib\Cookie\CookieMetadataFactory');
+    }
+
+    /**
+     * Given a time input, returns the formatted header
+     *
+     * @param string $time
+     * @return string
+     */
+    protected function getExpirationHeader($time)
+    {
+        return $this->dateTime->gmDate(self::EXPIRATION_TIMESTAMP_FORMAT, $this->dateTime->strToTime($time));
     }
 }

@@ -31,24 +31,24 @@ class Address extends SalesResource implements OrderAddressResourceInterface
     protected $gridPool;
 
     /**
-     * @param \Magento\Framework\App\Resource $resource
+     * @param \Magento\Framework\Model\Resource\Db\Context $context
      * @param \Magento\Sales\Model\Resource\Attribute $attribute
      * @param \Magento\Sales\Model\Increment $salesIncrement
      * @param \Magento\Sales\Model\Order\Address\Validator $validator
      * @param \Magento\Sales\Model\Resource\GridPool $gridPool
-     * @param \Magento\Sales\Model\Resource\GridInterface $gridAggregator
+     * @param string|null $resourcePrefix
      */
     public function __construct(
-        \Magento\Framework\App\Resource $resource,
+        \Magento\Framework\Model\Resource\Db\Context $context,
         \Magento\Sales\Model\Resource\Attribute $attribute,
         \Magento\Sales\Model\Increment $salesIncrement,
         \Magento\Sales\Model\Order\Address\Validator $validator,
         \Magento\Sales\Model\Resource\GridPool $gridPool,
-        \Magento\Sales\Model\Resource\GridInterface $gridAggregator = null
+        $resourcePrefix = null
     ) {
         $this->_validator = $validator;
         $this->gridPool = $gridPool;
-        parent::__construct($resource, $attribute, $salesIncrement, $gridAggregator);
+        parent::__construct($context, $attribute, $salesIncrement, $resourcePrefix);
     }
 
     /**
@@ -89,7 +89,7 @@ class Address extends SalesResource implements OrderAddressResourceInterface
      *
      * @param \Magento\Framework\Model\AbstractModel $object
      * @return $this
-     * @throws \Magento\Framework\Model\Exception
+     * @throws \Magento\Framework\Exception\LocalizedException
      */
     protected function _beforeSave(\Magento\Framework\Model\AbstractModel $object)
     {
@@ -104,8 +104,8 @@ class Address extends SalesResource implements OrderAddressResourceInterface
         }
         $warnings = $this->_validator->validate($object);
         if (!empty($warnings)) {
-            throw new \Magento\Framework\Model\Exception(
-                __("Cannot save address") . ":\n" . implode("\n", $warnings)
+            throw new \Magento\Framework\Exception\LocalizedException(
+                __("Cannot save address:\n%1", implode("\n", $warnings))
             );
         }
         return $this;
